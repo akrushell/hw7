@@ -1,35 +1,97 @@
-window.addEventListener('DOMContentLoaded', async function(event) {
-  let db = firebase.firestore()
-  let apiKey = 'your TMDB API key'
-  let response = await fetch(`https://api.themoviedb.org/3/movie/now_playing?api_key=${apiKey}&language=en-US`)
-  let json = await response.json()
-  let movies = json.results
-  console.log(movies)
-  
-  for (let i=0; i<movies.length; i++) {
-    let movie = movies[i]
-    let docRef = await db.collection('watched').doc(`${movie.id}`).get()
-    let watchedMovie = docRef.data()
-    let opacityClass = ''
-    if (watchedMovie) {
-      opacityClass = 'opacity-20'
-    }
 
-    document.querySelector('.movies').insertAdjacentHTML('beforeend', `
+// window.addEventListener('DOMContentLoaded', async function(event) {
+
+  firebase.auth().onAuthStateChanged(async function (user) {
+    let db = firebase.firestore()
+
+  if (user) {
+    console.log('user logged in')
+    console.log(`${user.displayName} logged in`)
+
+    db.collection('users').doc(user.uid).set({
+      name: user.displayName,
+      email: user.email,
+      userId: user.uid
+    })
+
+    document.querySelector('.sign-in-or-sign-out').innerHTML = 
+    `
+    <a class="displayName text-white mt-4 px-4 py-2"> Welcome ${user.displayName}!</a>
+     <p href="#" class="sign-out text-right text-white underline">Sign Out</p>
+    `
+    //if possible change color when hover/click
+    document.querySelector('.sign-out').addEventListener('click',function(event){
+      event.preventDefault()
+      firebase.auth().signOut()
+      document.location.href = 'movies.html'
+    })
+
+    let apiKey = '6d6fc7aaf645ebf42c135e634a8ba806'
+    let response = await fetch(`https://api.themoviedb.org/3/movie/now_playing?api_key=${apiKey}&language=en-US`)
+    let json = await response.json()
+    let movies = json.results
+    console.log(movies)
+
+    for (let i = 0; i < movies.length; i++) {
+      let movie = movies[i]
+      let currentUser = firebase.auth().currentUser
+      let docRef = await db.collection('watched').doc(`${movie.id}-${currentUser.uid}`).get()
+      let watchedMovie = docRef.data()
+      let opacityClass = ''
+      if (watchedMovie) {
+        opacityClass = 'opacity-20'
+      }
+
+      document.querySelector('.movies').insertAdjacentHTML('beforeend', `
       <div class="w-1/5 p-4 movie-${movie.id} ${opacityClass}">
         <img src="https://image.tmdb.org/t/p/w500${movie.poster_path}" class="w-full">
         <a href="#" class="watched-button block text-center text-white bg-green-500 mt-4 px-4 py-2 rounded">I've watched this!</a>
       </div>
     `)
 
-    document.querySelector(`.movie-${movie.id}`).addEventListener('click', async function(event) {
-      event.preventDefault()
-      let movieElement = document.querySelector(`.movie-${movie.id}`)
-      movieElement.classList.add('opacity-20')
-      await db.collection('watched').doc(`${movie.id}`).set({})
-    }) 
+      document.querySelector(`.movie-${movie.id}`).addEventListener('click', async function (event) {
+        event.preventDefault()
+        let movieElement = document.querySelector(`.movie-${movie.id}`)
+        movieElement.classList.add('opacity-20')
+      
+        let movieuserid = `${user.uid}+${movie.id}`
+        console.log(`${movieuserid}`)
+
+        //update this to be a combination of movie and user id
+
+        await db.collection('watched').doc(`${movie.id}-${currentUser.uid}`).set({
+          movieId: movie.id,
+          userId: user.uid,
+          movieTitle: movie.original_title,
+          watcherId: currentUser.uid,
+          watcherEmail: currentUser.email
+        })
+      })
+    }
+
   }
+  //end if statement
+  //need to automatically refresh so that there isn't residual info 
+//need to delete old clicked movies 
+  else {
+    console.log('user signed out')
+    let ui = new firebaseui.auth.AuthUI(firebase.auth())
+
+    // FirebaseUI configuration
+    let authUIConfig = {
+      signInOptions: [
+        firebase.auth.EmailAuthProvider.PROVIDER_ID
+      ],
+      signInSuccessUrl: 'movies.html'
+    }
+
+    // Starts FirebaseUI Auth
+    ui.start('.sign-in-or-sign-out', authUIConfig)
+  }
+//automatically get rid of residual movies 
 })
+
+
 
 // Goal:   Refactor the movies application from last week, so that it supports
 //         user login and each user can have their own watchlist.
